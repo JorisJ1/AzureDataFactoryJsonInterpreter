@@ -1,5 +1,6 @@
 ﻿using System.Text;
 using System.Text.Json;
+using System.Xml.Linq;
 
 namespace AzureDataFactoryJsonInterpreter
 {
@@ -79,7 +80,7 @@ namespace AzureDataFactoryJsonInterpreter
                     }
                 }
 
-                string[] parts = node.lines.Split('(', 2, StringSplitOptions.None);
+                string[] parts = node.lines.Split(new char[] { '(', ')'}, 2, StringSplitOptions.None);
                 node.definition = parts[0];
                 node.contents = parts[1];
 
@@ -89,16 +90,114 @@ namespace AzureDataFactoryJsonInterpreter
                 string[] inputStreams = new string[definitionParts.Length - 1];
                 Array.Copy(definitionParts, 0, inputStreams, 0, definitionParts.Length - 1);
                 node.InputStreams = inputStreams;
+
+                // Extract info from the contents.
+                node.contentDict = ConvertNodeInfoToDictionary(node.nodeType, node.contents);
             }
         }
 
-        internal static List<ADFNode> GetNodes(List<ADFNodeRaw> rawNodes) {
+        private static Dictionary<string, string> ConvertNodeInfoToDictionary(string nodeType, string contents) {
+            Dictionary <string, string> dict = new Dictionary<string, string>();
+
+            if (nodeType == "filter") {
+                dict.Add("other", contents.Replace("\n", "").Replace("\r", ""));
+                return dict;
+            }
+
+            int parenthesisLevel = 0;
+            char currentChar = '\n';
+            char previousChar = '\n';
+            StringBuilder currentText = new StringBuilder();
+            string currentKey = "";
+            string currentValue = "";
+            bool inTextBlock = false;
+
+            for (int i = 0; i < contents.Length; i++) {
+
+                if (contents[i] == '\n' || contents[i] == '\r') {
+                    continue;
+                }
+
+                previousChar = currentChar;
+                currentChar = contents[i]; 
+
+                if (currentChar == '(' || currentChar == '[') {
+                    if (parenthesisLevel > 0) {
+                        currentText.Append(currentChar);
+                    } else {
+                        currentKey = currentText.ToString();
+                        currentText.Clear();
+                    }
+                    parenthesisLevel++;
+
+                } else if (currentChar == ')' || currentChar == ']') {
+                    parenthesisLevel--;
+
+                    if (parenthesisLevel > 0) {
+                        currentText.Append(currentChar);
+                    } else if (parenthesisLevel < 0) {
+                        // A closing parenthesis has been found lower then level 0;
+                        // this must be the end of this node's data.
+
+                        if (currentText.Length > 0) {
+                            string currentTextStr = currentText.ToString();
+                            currentText.Clear();
+                            string[] currentTextSplit = currentTextStr.Split(':');
+                            if (currentTextSplit.Length == 2) {
+                                dict.Add(currentTextSplit[0].Trim(), currentTextSplit[1].Trim());
+                            } else {
+                                dict.Add("other", currentTextStr.Trim());
+                            }
+                        }
+
+                    } else {
+                        currentValue = currentText.ToString();
+                        currentText.Clear();
+
+                        dict.Add(currentKey.Replace(":", "").Trim(), currentValue.Trim());
+                    }
+
+                } else if (currentChar == '\'') {
+                    // Entering or exiting a text block.
+                    inTextBlock = !inTextBlock;
+
+                } else if ((currentChar == '*' && previousChar == '/') || (currentChar == '/' && previousChar == '*')) {
+                    // Entering or exiting a text block.
+                    inTextBlock = !inTextBlock;
+
+                } else if (currentChar == ',' && !inTextBlock && parenthesisLevel == 0) {
+                    // Comma outside of a text block and not within parenthesis means end of line.
+
+                    if (currentText.Length > 0) {
+                        string currentTextStr = currentText.ToString();
+                        currentText.Clear();
+                        string[] currentTextSplit = currentTextStr.Split(':');
+                        if (currentTextSplit.Length == 2) {
+                            dict.Add(currentTextSplit[0].Trim(), currentTextSplit[1].Trim());
+                        } else {
+                            dict.Add("other", currentTextStr.Trim());
+                        }
+                    }
+
+                } else {
+
+                    currentText.Append(currentChar);
+
+                }
+            }
+            return dict;
+        }
+
+        private static List<ADFNode> GetNodes(List<ADFNodeRaw> rawNodes) {
 
             Dictionary<string, ADFNode> dict = new Dictionary<string, ADFNode>();
 
             // Create an ADFNode for each ADFNodeRaw and add to the dictionary.
             foreach (ADFNodeRaw nodeRaw in rawNodes) {
-                ADFNode node = new ADFNode(nodeRaw.name, nodeRaw.nodeType);
+                ADFNode node = new ADFNode();
+                node.Name = nodeRaw.name;
+                node.NodeType = nodeRaw.nodeType;
+                node.NodeInfo = nodeRaw.contentDict;
                 dict.Add(node.Name, node);
             }
 

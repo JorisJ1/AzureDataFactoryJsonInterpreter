@@ -1,9 +1,55 @@
-﻿using System.Text;
+﻿using System.ComponentModel;
+using System.Text;
+using System.Xml.Linq;
 
 namespace AzureDataFactoryJsonInterpreter
 {
     internal class OutputFunctions
     {
+        internal static void GenerateHtmlDoc(List<ADFNode> nodes, string outputFolder) {
+            string htmlTemplate = File.ReadAllText("template.html");
+
+            string mermaidCode = GenerateMermaidFlowChart(nodes, includeJsCallbacks:true);
+            string jsonInfo = GenerateJsonInfo(nodes);
+            string html = htmlTemplate.Replace("$mermaid$", mermaidCode);
+            html = html.Replace("$json$", jsonInfo);
+
+            File.WriteAllText(Path.Combine(outputFolder, "index.html"), html);
+        }
+
+        private static string GenerateJsonInfo(List<ADFNode> nodes) {
+            List<string> nodeStrings = new List<string>();
+            StringBuilder sb;
+            foreach (ADFNode node in nodes) {
+                sb = new StringBuilder();
+                sb.Append('\"');
+                sb.Append(node.ID);
+                sb.Append("\":\"");
+                GenerateNodeDescriptionHtml(sb, node);
+                sb.Append('\"');
+                nodeStrings.Add(sb.ToString());
+            }
+            return string.Concat('{', string.Join(',', nodeStrings),'}');
+        }
+
+        private static void GenerateNodeDescriptionHtml(StringBuilder sb, ADFNode node) {
+            sb.Append("<b>");
+            sb.Append(node.Name);
+            sb.Append("</b>");
+            sb.Append("<i>");
+            sb.Append(node.NodeType);
+            sb.Append("</i>");
+            sb.Append("<ul>");
+            foreach (var item in node.NodeInfo) {
+                sb.Append("<li><b>");
+                sb.Append(item.Key);
+                sb.Append("</b>: ");
+                sb.Append(item.Value);
+                sb.Append("</li>");
+            }
+            sb.Append("<ul>");
+        }
+
         internal static void GenerateMarkdownDocumentation(List<ADFNode> nodes, string outputFolder) {
 
             StringBuilder sb = new StringBuilder();
@@ -13,11 +59,22 @@ namespace AzureDataFactoryJsonInterpreter
                 sb.Append(" (");
                 sb.Append(node.NodeType);
                 sb.AppendLine(")");
+
+                foreach (var item in node.NodeInfo) {
+                    sb.Append("- ");
+                    sb.Append(item.Key);
+                    sb.Append(": ");
+                    sb.AppendLine(item.Value);
+                }
+
+                sb.AppendLine();
             }
             File.WriteAllText(Path.Combine(outputFolder, "index.md"), sb.ToString());
         }
 
-        internal static void GenerateMermaidFlowChart(List<ADFNode> nodes, string outputFolder) {
+        private static string GenerateMermaidFlowChart(List<ADFNode> nodes, bool includeJsCallbacks = false) {
+
+            // FIXME: Why are Mermaid comments (lines starting with '%%') not working?
 
             // Put all nodes in a dictionary by name and assign unique IDs.
             Dictionary<string, ADFNode> nodesDict = new Dictionary<string, ADFNode>();
@@ -29,6 +86,7 @@ namespace AzureDataFactoryJsonInterpreter
 
             StringBuilder sb = new StringBuilder();
             sb.AppendLine("flowchart TD");
+            //sb.AppendLine("%% Declaration of nodes in format: <id>[(<name>)]:::<style classname>");
             foreach (ADFNode node in nodesDict.Values) {
                 sb.Append(node.ID);
 
@@ -58,6 +116,8 @@ namespace AzureDataFactoryJsonInterpreter
                         break;
                 }
             }
+
+            //sb.AppendLine("%% Declaration of node connections.");
             foreach (ADFNode node in nodesDict.Values) {
                 if (node.Children != null) {
                     foreach (ADFNode childNode in node.Children) {
@@ -67,11 +127,23 @@ namespace AzureDataFactoryJsonInterpreter
                     }
                 }
             }
+
+            //sb.AppendLine("%% Style classes.");
             sb.AppendLine("classDef C1 fill:#DDF0FF, stroke:#0078D4"); // Blue: source/sink
             sb.AppendLine("classDef C2 fill:#e8ede2, stroke:#47711C"); // Green: derive/aggregate/select/window
             sb.AppendLine("classDef C3 fill:#e7dcfd, stroke:#B796F9"); // Purple: lookup/union/split/join
             sb.AppendLine("classDef C4 fill:#fef4e8, stroke:#F9981E"); // Orange: filter/alterRow
-            File.WriteAllText(Path.Combine(outputFolder, "mermaid.txt"), sb.ToString());
+
+            if (includeJsCallbacks) {
+                //sb.AppendLine("%% Click events.");
+                foreach (ADFNode node in nodesDict.Values) {
+                    sb.Append("click ");
+                    sb.Append(node.ID);
+                    sb.AppendLine(" doCb");
+                }
+            }
+
+            return sb.ToString();
         }
     }
 }

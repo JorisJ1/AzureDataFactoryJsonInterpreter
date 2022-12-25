@@ -62,22 +62,21 @@ public class ADFNodeRaw
 
     public string? nodeType { get; set; }
     public string[] InputStreams { get; set; }
+    public Dictionary<string, string> contentDict { get; internal set; }
 }
 
 public class ADFNode
 {
-    public ADFNode(string name, string type) {
-        this.Name = name;
-        this.NodeType = type;
-    }
-
     public string? ID { get; set; }
     public string Name { get; set; }
     public string NodeType { get; set; }
-    //public bool allowSchemaDrift { get; set; }
-    //public bool validateSchema { get; set; }
-    //public string? isolationLevel { get; set; }
-    //public string? format { get; set; }
-
     public List<ADFNode>? Children { get; set; }
+
+    // Temporary until I finish creating a class for every node type.
+    public Dictionary<string, string> NodeInfo { get; internal set; }
 }
+
+//public class ADFNodeSource : ADFNode
+//{
+//    // TODO: A class for every node type.
+//}
