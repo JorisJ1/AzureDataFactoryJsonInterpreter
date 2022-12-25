@@ -71,6 +71,7 @@ public class ADFNode
     public string Name { get; set; }
     public string NodeType { get; set; }
     public List<ADFNode>? Children { get; set; }
+    public List<ADFNode>? Parents { get; set; }
 
     // Temporary until I finish creating a class for every node type.
     public Dictionary<string, string> NodeInfo { get; internal set; }

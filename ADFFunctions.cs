@@ -213,8 +213,12 @@ namespace AzureDataFactoryJsonInterpreter
                     inputNodeName = inputStreamParts[0];
 
                     ADFNode parentNode = dict[inputNodeName];
+
                     if (parentNode.Children == null) parentNode.Children = new List<ADFNode>();
                     parentNode.Children.Add(currentNode);
+
+                    if (currentNode.Parents == null) currentNode.Parents = new List<ADFNode>();
+                    currentNode.Parents.Add(parentNode);
                 }
             }
 
