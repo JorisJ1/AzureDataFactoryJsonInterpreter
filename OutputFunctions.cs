@@ -51,20 +51,22 @@ namespace AzureDataFactoryJsonInterpreter
             sb.Append("<ul>");
         }
 
-        internal static void GenerateMarkdownDocumentation(List<ADFNode> nodes, string outputFolder) {
+        internal static void GenerateMarkdownDocumentation(List<ADFNode> nodes, string outputPath) {
 
             StringBuilder sb = new StringBuilder();
 
             sb.AppendLine("## Nodes");
+            sb.AppendLine();
             GenerateMarkdownText(sb, nodes);
 
             sb.AppendLine();
             sb.AppendLine("## Flowchart");
+            sb.AppendLine();
             sb.AppendLine("::: mermaid");
             GenerateMermaidFlowChart(sb, nodes);
             sb.AppendLine(":::");
 
-            File.WriteAllText(Path.Combine(outputFolder, "index.md"), sb.ToString());
+            File.WriteAllText(outputPath, sb.ToString());
         }
 
         internal static void GenerateMarkdownText(StringBuilder sb, List<ADFNode> nodes) {
@@ -72,11 +74,16 @@ namespace AzureDataFactoryJsonInterpreter
                 sb.Append("### ");
                 sb.AppendLine(node.Name);
 
+                if (node.Description != null) {
+                    sb.AppendLine(node.Description);
+                    sb.AppendLine();
+                }
+
                 sb.Append("Type: ");
                 sb.AppendLine(GetFullNodeTypeName(node.NodeType));
 
                 if (node.Parents != null && node.Parents.Count > 0) {
-                    sb.Append("Input stream(s): ");
+                    sb.Append("Input: ");
                     foreach (ADFNode parentNode in node.Parents) {
                         // Anchor link to another section.
                         sb.Append("[");
@@ -89,7 +96,7 @@ namespace AzureDataFactoryJsonInterpreter
                 }
 
                 if (node.Children != null && node.Children.Count > 0) {
-                    sb.Append("Output stream(s): ");
+                    sb.Append("Output: ");
                     foreach (ADFNode childNode in node.Children) {
                         // Anchor link to another section.
                         sb.Append("[");

@@ -1,12 +1,12 @@
-﻿using System.Text;
+﻿using System.Reflection.Metadata;
+using System.Text;
 using System.Text.Json;
-using System.Xml.Linq;
 
 namespace AzureDataFactoryJsonInterpreter
 {
     public class ADFFunctions
     {
-        public static List<ADFNode> GetNodes(string path) {
+        public static ADFDataFlow GetDataFlow(string path) {
 
             string jsonString = File.ReadAllText(path);
 
@@ -15,6 +15,12 @@ namespace AzureDataFactoryJsonInterpreter
             options.PropertyNameCaseInsensitive = true;
 
             ADFDataFlow dataFlow = JsonSerializer.Deserialize<ADFDataFlow>(jsonString, options);
+            if (dataFlow == null) throw new Exception("Problem deserialising.");
+
+            return dataFlow;
+        }
+
+        public static List<ADFNode> GetNodes(ADFDataFlow dataFlow) {
 
             string source = "";
             if (dataFlow.properties != null && dataFlow.properties.typeProperties != null) {
@@ -27,14 +33,49 @@ namespace AzureDataFactoryJsonInterpreter
             }
 
             // Convert the source script to a list of raw node data.
-            List<ADFNodeRaw> rawNodes = GetRawNodes(source);
+            List<ADFNodeRaw> rawNodes = GetRawNodesFromScript(source);
 
             ExtractInfo(rawNodes);
 
-            return GetNodes(rawNodes);
+            Dictionary<string, ADFNode> nodes = GetNodes(rawNodes);
+
+            // Add info to the nodes that comes from outside the script.
+            AddBaseInfo(dataFlow.properties.typeProperties, nodes);
+
+            return nodes.Values.ToList();
         }
 
-        public static List<ADFNodeRaw> GetRawNodes(string source) {
+        /// <summary>
+        /// Add info to the nodes that comes from outside the script.
+        /// </summary>
+        private static void AddBaseInfo(ADFTypeProperties props, Dictionary<string, ADFNode> nodes) {
+
+            if (props.sources != null) {
+                foreach (ADFSource item in props.sources) {
+                    if (nodes.TryGetValue(item.name, out ADFNode node)) {
+                        node.Description = item.description;
+                    }
+                }
+            }
+
+            if (props.sinks != null) {
+                foreach (ADFSink item in props.sinks) {
+                    if (nodes.TryGetValue(item.name, out ADFNode node)) {
+                        node.Description = item.description;
+                    }
+                }
+            }
+
+            if (props.transformations != null) {
+                foreach (ADFTransformation item in props.transformations) {
+                    if (nodes.TryGetValue(item.name, out ADFNode node)) {
+                        node.Description = item.description;
+                    }
+                }
+            }
+        }
+
+        public static List<ADFNodeRaw> GetRawNodesFromScript(string source) {
             List<ADFNodeRaw> rawNodes = new List<ADFNodeRaw>();
 
             StringBuilder currentNodeLines = new StringBuilder();
@@ -81,7 +122,15 @@ namespace AzureDataFactoryJsonInterpreter
                 }
 
                 string[] parts = node.lines.Split(new char[] { '(', ')'}, 2, StringSplitOptions.None);
-                node.definition = parts[0];
+                node.definition = parts[0].Replace("\r", "").Replace("\n", "");
+
+                // Exception for a definition containing parameters, such as:
+                // parameters{pipeline_name as string,pipeline_runid as string}source
+                // FIXME: Replace this quickfix with something better.
+                if (node.definition.EndsWith("source")) {
+                    node.definition = "source";
+                }
+
                 node.contents = parts[1];
 
                 // Extract info from the definition.
@@ -92,7 +141,7 @@ namespace AzureDataFactoryJsonInterpreter
                 node.InputStreams = inputStreams;
 
                 // Extract info from the contents.
-                node.contentDict = ConvertNodeInfoToDictionary(node.nodeType, node.contents);
+                //node.contentDict = ConvertNodeInfoToDictionary(node.nodeType, node.contents);
             }
         }
 
@@ -188,7 +237,7 @@ namespace AzureDataFactoryJsonInterpreter
             return dict;
         }
 
-        private static List<ADFNode> GetNodes(List<ADFNodeRaw> rawNodes) {
+        private static Dictionary<string, ADFNode> GetNodes(List<ADFNodeRaw> rawNodes) {
 
             Dictionary<string, ADFNode> dict = new Dictionary<string, ADFNode>();
 
@@ -222,7 +271,7 @@ namespace AzureDataFactoryJsonInterpreter
                 }
             }
 
-            return dict.Values.ToList<ADFNode>();
+            return dict;
         }
     }
 }
